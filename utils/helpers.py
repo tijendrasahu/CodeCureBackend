@@ -1,26 +1,30 @@
 import os
 import uuid
-from googletrans import Translator
+# --- UPDATED IMPORT ---
+from deep_translator import GoogleTranslator
 import speech_recognition as sr
 from pydub import AudioSegment
 
 # --- Important Setup Note ---
 # These functions use free libraries. Install them using pip:
-# pip install googletrans==4.0.0-rc1 SpeechRecognition pydub
+# pip install deep-translator SpeechRecognition pydub
 #
 # For audio conversion, you also need ffmpeg installed on your system.
 
 def free_translate(text: str, target_lang: str = 'en') -> str:
     """
-    Translates text using the free googletrans library.
+    Translates text using the more reliable deep-translator library.
+    It automatically detects the source language.
     """
     try:
-        translator = Translator()
-        translation = translator.translate(text, dest=target_lang)
-        return translation.text
+        # Automatically detects the source language ('auto')
+        translated_text = GoogleTranslator(source='auto', target=target_lang).translate(text)
+        # Return the translated text, or the original if translation returns None
+        return translated_text if translated_text else text
     except Exception as e:
-        print(f"Error during free translation: {e}")
-        return f"[Translation failed] " + text
+        print(f"Translation failed with deep-translator: {e}")
+        # Fallback to returning the original text if any error occurs
+        return text
 
 def free_audio_to_text(audio_path: str, language_code: str) -> str:
     """
@@ -69,4 +73,3 @@ def save_file_and_get_name(upload_folder: str, file_storage) -> str:
     path = os.path.join(upload_folder, filename)
     file_storage.save(path)
     return filename
-

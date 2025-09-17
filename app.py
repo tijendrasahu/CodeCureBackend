@@ -7,7 +7,7 @@ from pymongo import MongoClient
 
 # Blueprints
 from blueprints.patients import patients_bp
-from blueprints.doctor import doctor_bp
+from blueprints.doctor import doctors_bp
 from blueprints.pharma import pharma_bp
 
 app = Flask(__name__)
@@ -25,7 +25,7 @@ app.db = client[Config.MONGO_DB_NAME]
 
 # Register blueprints
 app.register_blueprint(patients_bp, url_prefix='/patients')
-app.register_blueprint(doctor_bp, url_prefix='/doctor')
+app.register_blueprint(doctors_bp, url_prefix='/doctors')
 app.register_blueprint(pharma_bp, url_prefix='/pharma')
 
 @app.route('/ping')
