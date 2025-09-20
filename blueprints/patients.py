@@ -2,11 +2,11 @@ from flask import Blueprint, request, current_app, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from utils.auth import hash_password, verify_password
-# Updated imports for AI and helpers
 from utils.helpers import free_translate, free_audio_to_text, save_file_and_get_name
 from utils.ai_model import get_ai_response
 import datetime
 import os
+from bson.objectid import ObjectId
 
 patients_bp = Blueprint('patients', __name__)
 
@@ -91,7 +91,7 @@ def login():
 
 
 # ---------------------------
-# PROFILE DETAILS
+# PROFILE
 # ---------------------------
 @patients_bp.route('/profile-details', methods=['GET'])
 @jwt_required()
@@ -104,9 +104,6 @@ def profile_details():
     return jsonify({'profile': user}), 200
 
 
-# ---------------------------
-# PROFILE UPDATE
-# ---------------------------
 @patients_bp.route('/profile-details-update', methods=['PUT', 'POST'])
 @jwt_required()
 def profile_update():
@@ -143,7 +140,7 @@ def events():
 
 
 # ---------------------------
-# REPORT & FILE SERVING
+# REPORTS & FILE SERVING
 # ---------------------------
 @patients_bp.route('/report/upload', methods=['POST'])
 @jwt_required()
@@ -174,21 +171,21 @@ def report_list():
         f['_id'] = str(f['_id'])
     return jsonify({'reports': files}), 200
 
-
-@patients_bp.route('/report/download/<filename>', methods=['GET'])
-def report_download(filename):
-    uploads = current_app.config['UPLOAD_FOLDER']
-    return send_from_directory(uploads, filename, as_attachment=True)
-
-
+# ==============================================================================
+#  !! UNIVERSAL FILE SERVER !!
+# ==============================================================================
 @patients_bp.route('/uploads/<path:filename>')
 def serve_uploaded_file(filename):
+    """
+    Serves any file from the UPLOAD_FOLDER (e.g., profile pictures, audio, etc.).
+    This single endpoint handles all file serving needs.
+    """
     uploads_dir = os.path.join(current_app.root_path, current_app.config.get('UPLOAD_FOLDER', 'uploads'))
     return send_from_directory(uploads_dir, filename)
 
 
 # ---------------------------
-# ISSUE SUBMISSION & LISTING
+# ISSUES
 # ---------------------------
 @patients_bp.route('/issue', methods=['POST'])
 @jwt_required()
@@ -204,7 +201,9 @@ def issue_submit():
     
     stored = {
         'user_id': current_user_id,
-        'created_at': datetime.datetime.now(datetime.UTC)
+        'created_at': datetime.datetime.now(datetime.UTC),
+        'status': 'Pending',
+        'prescription': None
     }
     
     if note:
@@ -230,6 +229,29 @@ def issue_list():
         issue['_id'] = str(issue['_id'])
     return jsonify({'issues': user_issues}), 200
 
+
+@patients_bp.route('/issue/<string:issue_id>', methods=['DELETE'])
+@jwt_required()
+def delete_issue(issue_id):
+    current_user_id = get_jwt_identity()
+
+    try:
+        issue_to_delete = issues_collection().find_one({'_id': ObjectId(issue_id)})
+    except Exception:
+        return jsonify({"error": "Invalid issue ID format"}), 400
+
+    if not issue_to_delete:
+        return jsonify({"error": "Issue not found"}), 404
+
+    if issue_to_delete.get('user_id') != current_user_id:
+        return jsonify({"error": "Forbidden: You can only delete your own issues."}), 403
+
+    result = issues_collection().delete_one({'_id': ObjectId(issue_id)})
+
+    if result.deleted_count == 1:
+        return jsonify({"message": "Issue deleted successfully"}), 200
+    else:
+        return jsonify({"error": "Failed to delete issue"}), 500
 
 # ---------------------------
 # HYBRID AI CHATBOT
@@ -274,4 +296,3 @@ def handle_ai_prompt():
         return jsonify(ai_result), 500
     
     return jsonify(ai_result), 200
-

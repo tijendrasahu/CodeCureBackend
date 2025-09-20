@@ -1,36 +1,58 @@
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
-from config import Config
 from pymongo import MongoClient
+import certifi
+from dotenv import load_dotenv
 
-# Blueprints
+# .env file se saari keys (jaise OPENAI_API_KEY, AGORA_APP_ID) ko load karta hai
+load_dotenv()
+
+# --- BLUEPRINTS ---
+# Saare blueprints ko import karein
 from blueprints.patients import patients_bp
 from blueprints.doctor import doctors_bp
 from blueprints.pharma import pharma_bp
+from blueprints.video import video_bp
 
-app = Flask(__name__)
-app.config.from_object(Config)
-CORS(app)
-jwt = JWTManager(app)
+def create_app():
+    """App factory to create and configure the Flask app."""
+    app = Flask(__name__)
+    
+    # Configuration
+    app.config.from_object('config.Config')
+    CORS(app, resources={r"/*": {"origins": "*"}})
+    jwt = JWTManager(app)
 
-# Ensure upload folder
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    # Ensure the upload folder exists
+    upload_folder = app.config.get('UPLOAD_FOLDER', 'uploads')
+    if not os.path.exists(upload_folder):
+        os.makedirs(upload_folder)
 
-# Mongo client accessible via app
-client = MongoClient(app.config['MONGO_URI'])
-# Explicitly pick DB name from config instead of get_database()
-app.db = client[Config.MONGO_DB_NAME]
+    # Database connection with SSL fix
+    client = MongoClient(app.config['MONGO_URI'], tlsCAFile=certifi.where())
+    app.db = client[app.config['MONGO_DB_NAME']]
 
-# Register blueprints
-app.register_blueprint(patients_bp, url_prefix='/patients')
-app.register_blueprint(doctors_bp, url_prefix='/doctors')
-app.register_blueprint(pharma_bp, url_prefix='/pharma')
+    # --- BLUEPRINTS KO REGISTER KAREIN ---
+    app.register_blueprint(patients_bp, url_prefix='/patients')
+    app.register_blueprint(doctors_bp, url_prefix='/doctors')
+    app.register_blueprint(pharma_bp, url_prefix='/pharma')
+    app.register_blueprint(video_bp, url_prefix='/video')
 
-@app.route('/ping')
-def ping():
-    return jsonify({'status': 'ok'})
+    # Central file server for all uploaded content
+    @app.route('/uploads/<path:filename>')
+    def serve_central_uploads(filename):
+        uploads_dir = os.path.join(app.root_path, upload_folder)
+        return send_from_directory(uploads_dir, filename)
+
+    @app.route('/ping')
+    def ping():
+        return jsonify({'status': 'ok'})
+
+    return app
 
 if __name__ == '__main__':
+    app = create_app()
     app.run(host='0.0.0.0', port=5000, debug=True)
+
