@@ -29,7 +29,6 @@ EMERGENCY_SYMPTOMS = [
     "unconscious", "bleeding", "seizure", "heart attack",
     "stroke", "severe headache", "vision loss", "suicide"
 ]
-
 FEATURE_KEYWORDS = {
     ("book", "appointment"): "📅 I can help you book a doctor’s appointment. Please share your preferred date and specialty.",
     ("upload", "report"): "📑 You can upload your medical report. I will securely attach it to your health record.",
@@ -60,20 +59,14 @@ def register():
         return jsonify({'error':'Mobile already registered'}), 400
 
     patient = {
-        'first_name': data['first_name'],
-        'last_name': data['last_name'],
-        'age': int(data['age']),
-        'dob': data['dob'],
-        'sex': data['sex'],
-        'mobile': data['mobile'],
-        'password_hash': hash_password(data['password']),
-        'created_at': datetime.datetime.now(datetime.UTC),
-        'profile': {},
+        'first_name': data['first_name'], 'last_name': data['last_name'],
+        'age': int(data['age']), 'dob': data['dob'], 'sex': data['sex'],
+        'mobile': data['mobile'], 'password_hash': hash_password(data['password']),
+        'created_at': datetime.datetime.now(datetime.UTC), 'profile': {},
         'unique_id': os.urandom(8).hex()
     }
     patients_collection().insert_one(patient)
     return jsonify({'message':'Registered successfully','unique_id': patient['unique_id']}), 201
-
 
 # ---------------------------
 # LOGIN
@@ -89,7 +82,6 @@ def login():
     access = create_access_token(identity=user['unique_id'])
     return jsonify({'access_token': access}), 200
 
-
 # ---------------------------
 # PROFILE
 # ---------------------------
@@ -102,7 +94,6 @@ def profile_details():
         return jsonify({'error':'User not found'}), 404
     user['_id'] = str(user['_id'])
     return jsonify({'profile': user}), 200
-
 
 @patients_bp.route('/profile-details-update', methods=['PUT', 'POST'])
 @jwt_required()
@@ -127,7 +118,6 @@ def profile_update():
     patients_collection().update_one({'unique_id': current_user_id}, {'$set': {'profile': profile}})
     return jsonify({'message':'Profile updated', 'profile': profile}), 200
 
-
 # ---------------------------
 # EVENTS
 # ---------------------------
@@ -137,7 +127,6 @@ def events():
     for e in evs:
         e['_id'] = str(e.get('_id'))
     return jsonify({'events': evs}), 200
-
 
 # ---------------------------
 # REPORTS & FILE SERVING
@@ -161,7 +150,6 @@ def report_upload():
     })
     return jsonify({'message':'Uploaded','filename': filename}), 201
 
-
 @patients_bp.route('/report/list', methods=['GET'])
 @jwt_required()
 def report_list():
@@ -171,18 +159,15 @@ def report_list():
         f['_id'] = str(f['_id'])
     return jsonify({'reports': files}), 200
 
-# ==============================================================================
-#  !! UNIVERSAL FILE SERVER !!
-# ==============================================================================
+@patients_bp.route('/report/download/<filename>')
+def report_download(filename):
+    uploads_dir = os.path.join(current_app.root_path, current_app.config.get('UPLOAD_FOLDER', 'uploads'))
+    return send_from_directory(uploads_dir, filename, as_attachment=True)
+
 @patients_bp.route('/uploads/<path:filename>')
 def serve_uploaded_file(filename):
-    """
-    Serves any file from the UPLOAD_FOLDER (e.g., profile pictures, audio, etc.).
-    This single endpoint handles all file serving needs.
-    """
     uploads_dir = os.path.join(current_app.root_path, current_app.config.get('UPLOAD_FOLDER', 'uploads'))
     return send_from_directory(uploads_dir, filename)
-
 
 # ---------------------------
 # ISSUES
@@ -197,8 +182,12 @@ def issue_submit():
     data = request.form.to_dict() or {}
     note = data.get('text')
     language_code = data.get('language_code', 'en-US')
-    audio_file = request.files.get('audio') if 'audio' in request.files else None
-    
+    audio_file = request.files.get('audio')
+    video_file = request.files.get('video')
+
+    if not note and not audio_file and not video_file:
+        return jsonify({'error': 'No issue data provided. Please submit text, audio, or video.'}), 400
+
     stored = {
         'user_id': current_user_id,
         'created_at': datetime.datetime.now(datetime.UTC),
@@ -216,9 +205,12 @@ def issue_submit():
         full_audio_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
         stored['audio_transcript'] = free_audio_to_text(full_audio_path, language_code)
         
+    if video_file:
+        filename = save_file_and_get_name(current_app.config['UPLOAD_FOLDER'], video_file)
+        stored['video_filename'] = filename
+        
     issues_collection().insert_one(stored)
-    return jsonify({'message':'Issue submitted'}), 201
-
+    return jsonify({'message':'Issue submitted successfully'}), 201
 
 @patients_bp.route('/issue/list', methods=['GET'])
 @jwt_required()
@@ -229,12 +221,10 @@ def issue_list():
         issue['_id'] = str(issue['_id'])
     return jsonify({'issues': user_issues}), 200
 
-
 @patients_bp.route('/issue/<string:issue_id>', methods=['DELETE'])
 @jwt_required()
 def delete_issue(issue_id):
     current_user_id = get_jwt_identity()
-
     try:
         issue_to_delete = issues_collection().find_one({'_id': ObjectId(issue_id)})
     except Exception:
@@ -247,7 +237,6 @@ def delete_issue(issue_id):
         return jsonify({"error": "Forbidden: You can only delete your own issues."}), 403
 
     result = issues_collection().delete_one({'_id': ObjectId(issue_id)})
-
     if result.deleted_count == 1:
         return jsonify({"message": "Issue deleted successfully"}), 200
     else:
@@ -296,3 +285,4 @@ def handle_ai_prompt():
         return jsonify(ai_result), 500
     
     return jsonify(ai_result), 200
+

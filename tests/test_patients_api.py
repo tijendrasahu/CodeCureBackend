@@ -82,7 +82,7 @@ def test_events():
 
 def test_file_upload_serving_and_downloading(patient_token_and_mobile):
     """
-    NEW TEST: Tests the full file lifecycle:
+    Tests the full file lifecycle:
     1. Uploads a profile image and verifies it can be served.
     2. Uploads a report and verifies it can be downloaded.
     """
@@ -127,7 +127,8 @@ def test_issue_submit_and_list(patient_token_and_mobile):
     
     r_submit = requests.post(f'{BASE}/patients/issue', headers=headers, data={'text': issue_text})
     assert r_submit.status_code == 201
-    assert r_submit.json()['message'] == 'Issue submitted'
+    # --- YEH BADLAAV KIYA GAYA HAI (THIS IS THE FIX) ---
+    assert r_submit.json()['message'] == 'Issue submitted successfully'
 
     r_list = requests.get(f'{BASE}/patients/issue/list', headers=headers)
     assert r_list.status_code == 200
@@ -163,4 +164,3 @@ def test_ai_prompt_endpoint(patient_token_and_mobile):
     assert 'response' in response_data
     assert isinstance(response_data['response'], str)
     assert len(response_data['response']) > 10
-

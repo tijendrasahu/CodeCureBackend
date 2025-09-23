@@ -23,6 +23,7 @@ def reports_collection():
     return current_app.db['reports']
 
 def generate_unique_doctor_id():
+    """Generates a unique 6-digit alphanumeric ID for doctors."""
     while True:
         random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
         doctor_id = f"D-{random_part}"
@@ -54,6 +55,7 @@ def doctor_register():
         "approved_status": False,
         "registered_at": datetime.datetime.now(datetime.UTC)
     }
+    
     doctors_collection().insert_one(doctor_document)
     return jsonify({
         "message": "Registration successful. Please wait for admin approval.",
@@ -136,7 +138,7 @@ def prescribe_for_issue(issue_id):
     prescription_image = request.files.get('prescription_image') if 'prescription_image' in request.files else None
 
     if not prescription_text and not doctor_notes and not prescription_image:
-        return jsonify({"error": "At least one field is required: prescription_text, doctor_notes, or prescription_image"}), 400
+        return jsonify({"error": "At least one field is required"}), 400
 
     try:
         if not issues_collection().find_one({'_id': ObjectId(issue_id)}):
@@ -157,7 +159,7 @@ def prescribe_for_issue(issue_id):
 
     result = issues_collection().update_one(
         {'_id': ObjectId(issue_id)},
-        {'$set': {'prescription': prescription_data}}
+        {'$set': {'prescription': prescription_data, 'status': 'Resolved'}}
     )
 
     if result.modified_count == 1:
@@ -196,4 +198,37 @@ def upload_report_for_patient(patient_unique_id):
         "message": f"Report uploaded successfully for patient {patient_unique_id}",
         "filename": filename
     }), 201
+
+# ---------------------------
+# UPDATE ISSUE STATUS
+# ---------------------------
+@doctors_bp.route('/issue/<string:issue_id>/status', methods=['POST'])
+@jwt_required()
+def update_issue_status(issue_id):
+    jwt_data = get_jwt()
+    if jwt_data.get("role") != "doctor":
+        return jsonify({"error": "Access forbidden: Doctor access required"}), 403
+
+    data = request.get_json()
+    new_status = data.get('status')
+
+    allowed_statuses = ['Seen', 'Resolved']
+    if not new_status or new_status not in allowed_statuses:
+        return jsonify({"error": f"Invalid status. Must be one of: {allowed_statuses}"}), 400
+
+    try:
+        result = issues_collection().update_one(
+            {'_id': ObjectId(issue_id)},
+            {'$set': {'status': new_status}}
+        )
+    except Exception:
+        return jsonify({"error": "Invalid issue ID format"}), 400
+
+    if result.matched_count == 0:
+        return jsonify({"error": "Issue not found"}), 404
+        
+    if result.modified_count == 1:
+        return jsonify({"message": f"Issue status updated to '{new_status}'"}), 200
+    else:
+        return jsonify({"message": f"Issue status was already '{new_status}'"}), 200
 

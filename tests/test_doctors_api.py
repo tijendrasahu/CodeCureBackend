@@ -42,10 +42,7 @@ def registered_patient(db_connection):
 
 @pytest.fixture(scope="module")
 def approved_doctor_token(db_connection):
-    """
-    Registers a doctor, MANUALLY approves them in the DB (simulating an admin), 
-    and returns a valid login token for testing protected endpoints.
-    """
+    """Registers a doctor, MANUALLY approves them in the DB, and returns a valid login token."""
     payload = {
         'first_name': 'Approved', 'last_name': 'Doctor', 'password': 'approvedpass',
         'confirm_password': 'approvedpass', 'specialization': 'General Medicine', 'branch': 'Main'
@@ -54,7 +51,7 @@ def approved_doctor_token(db_connection):
     assert r_reg.status_code == 201
     doctor_id = r_reg.json()['doctor_id']
 
-    # Manually approve the doctor in the database, just like an admin would
+    # Manually approve the doctor in the database
     db_connection.doctors.update_one(
         {"doctor_id": doctor_id},
         {"$set": {"approved_status": True}}
@@ -115,20 +112,21 @@ def test_get_specific_patient_file(approved_doctor_token, registered_patient):
 
 def test_add_prescription_to_issue(approved_doctor_token, registered_patient, db_connection):
     """Tests if an approved doctor can add a prescription note to a patient's issue."""
-    headers = {'Authorization': f'Bearer {approved_doctor_token}', 'Content-Type': 'application/json'}
+    headers = {'Authorization': f'Bearer {approved_doctor_token}'}
 
-    # Find the issue submitted by our test patient
     patient_issue = db_connection.issues.find_one({'user_id': registered_patient['unique_id']})
     assert patient_issue is not None
     issue_id = str(patient_issue['_id'])
 
-    # Doctor adds a prescription
+    # --- YEH BADLAAV KIYA GAYA HAI (THIS IS THE FIX) ---
+    # Request ko ab form data ki tarah bhejein, JSON ki tarah nahi
     prescription_payload = {
         "prescription_text": "Take Paracetamol 500mg twice a day.",
         "doctor_notes": "Follow up in 3 days."
     }
-    r = requests.post(f'{BASE}/doctors/issue/{issue_id}/prescribe', headers=headers, json=prescription_payload)
-    assert r.status_code == 200
+    r = requests.post(f'{BASE}/doctors/issue/{issue_id}/prescribe', headers=headers, data=prescription_payload)
+    
+    assert r.status_code == 200, f"API failed with: {r.text}"
     assert r.json()['message'] == "Prescription added successfully"
 
     # Verify the prescription was actually added in the database

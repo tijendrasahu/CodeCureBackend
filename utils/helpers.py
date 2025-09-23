@@ -1,6 +1,11 @@
 import os
 import uuid
-# --- UPDATED IMPORT ---
+import time
+import random
+import hmac
+import hashlib
+import json
+from base64 import b64encode
 from deep_translator import GoogleTranslator
 import speech_recognition as sr
 from pydub import AudioSegment
@@ -73,3 +78,36 @@ def save_file_and_get_name(upload_folder: str, file_storage) -> str:
     path = os.path.join(upload_folder, filename)
     file_storage.save(path)
     return filename
+
+def generate_zego_token(app_id: int, server_secret: str, user_id: str, effective_time_in_seconds: int = 3600):
+    """Generates a secure token for ZegoCloud."""
+    if not isinstance(app_id, int):
+        raise TypeError("app_id must be an integer.")
+    if not isinstance(server_secret, str):
+        raise TypeError("server_secret must be a string.")
+    if not isinstance(user_id, str):
+        raise TypeError("user_id must be a string.")
+
+    create_time = int(time.time())
+    expire_time = create_time + effective_time_in_seconds
+    nonce = random.randint(0, 0xFFFFFFFF)
+
+    token_info = {
+        "app_id": app_id,
+        "user_id": user_id,
+        "nonce": nonce,
+        "ctime": create_time,
+        "expire": expire_time,
+    }
+
+    # Token payload ko JSON format mein taiyaar karein
+    payload = json.dumps(token_info)
+
+    # HMAC-SHA256 se signature banayein
+    digest = hmac.new(server_secret.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).digest()
+    
+    # Final token ko combine karein
+    token_data = b'\x00\x04' + int(expire_time).to_bytes(4, 'big') + len(digest).to_bytes(2, 'big') + digest + len(payload).to_bytes(2, 'big') + payload.encode('utf-8')
+
+    # Base64 encode karke final token return karein
+    return b64encode(token_data).decode('utf-8')
